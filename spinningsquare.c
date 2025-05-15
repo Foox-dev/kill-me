@@ -17,6 +17,10 @@ float cameraZ = -2.0f;
 float tiltAngle = 15.0f;
 float rotationSpeed = 2.0f;
 
+int mouseX = 0;
+int mouseY = 0;
+int rightMouseDown = 0;
+
 void drawBox(float size, float gap, float depth, GLfloat color[])
 {
   glColor3fv(color);
@@ -128,10 +132,10 @@ void specialKeys(int key, int x, int y)
   switch (key)
   {
   case GLUT_KEY_LEFT:
-    rotationSpeed = fmax(0.5f, rotationSpeed - 0.5f);
+    rotationSpeed = fmax(0.0f, rotationSpeed - 0.5f);
     break;
   case GLUT_KEY_RIGHT:
-    rotationSpeed = fmin(10.0f, rotationSpeed + 0.5f);
+    rotationSpeed = fmin(100.0f, rotationSpeed + 0.5f);
     break;
   case GLUT_KEY_UP:
     tiltAngle = fmin(89.0f, tiltAngle + 5.0f);
@@ -141,6 +145,57 @@ void specialKeys(int key, int x, int y)
     break;
   }
   glutPostRedisplay();
+}
+
+//
+void mouse(int button, int state, int x, int y)
+{
+  float zoomSpeed = 0.1f;
+
+  if (button == GLUT_RIGHT_BUTTON)
+  {
+    rightMouseDown = (state == GLUT_DOWN);
+    mouseX = x;
+    mouseY = y;
+  }
+  else if (state == GLUT_UP)
+  {
+    return;
+  }
+
+  switch (button)
+  {
+  case 3: // Mouse wheel up
+    cameraZ += zoomSpeed;
+    break;
+  case 4: // Mouse wheel down
+    cameraZ -= zoomSpeed;
+    break;
+  }
+  glutPostRedisplay();
+}
+
+void mouseMotion(int x, int y)
+{
+  if (rightMouseDown)
+  {
+    float sensitivity = 0.5f;
+    int deltaX = x - mouseX;
+    int deltaY = y - mouseY;
+
+    angle += deltaX * sensitivity;
+    if (angle > 360.0f)
+      angle -= 360.0f;
+    if (angle < 0.0f)
+      angle += 360.0f;
+
+    tiltAngle += deltaY * sensitivity;
+    tiltAngle = fmax(-89.0f, fmin(89.0f, tiltAngle));
+
+    glutPostRedisplay();
+  }
+  mouseX = x;
+  mouseY = y;
 }
 
 void display()
@@ -211,6 +266,8 @@ int main(int argc, char **argv)
   glutTimerFunc(0, update, 0);
   glutKeyboardFunc(keyboard);
   glutSpecialFunc(specialKeys);
+  glutMouseFunc(mouse);
+  glutMotionFunc(mouseMotion); // Add this line
 
   glutMainLoop();
   return 0;
