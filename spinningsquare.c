@@ -2,6 +2,7 @@
 
 #include <GL/glut.h>
 #include <math.h>
+#include <stdio.h>
 
 float angle = 0.0f;
 
@@ -108,7 +109,7 @@ void drawWindowsLogo()
 
 void keyboard(unsigned char key, int x, int y)
 {
-  float moveSpeed = 0.1f;
+  float moveSpeed = 0.01f;
   switch (key)
   {
   case 'w':
@@ -198,6 +199,39 @@ void mouseMotion(int x, int y)
   mouseY = y;
 }
 
+void renderText(float x, float y, const char *text)
+{
+  glMatrixMode(GL_PROJECTION);
+  glPushMatrix();
+  glLoadIdentity();
+  gluOrtho2D(0.0, glutGet(GLUT_WINDOW_WIDTH), 0.0, glutGet(GLUT_WINDOW_HEIGHT));
+
+  glMatrixMode(GL_MODELVIEW);
+  glPushMatrix();
+  glLoadIdentity();
+
+  glRasterPos2f(x, y);
+
+  // Disable depth testing temporarily
+  glDisable(GL_DEPTH_TEST);
+
+  // Set text color (black in this case)
+  glColor3f(0.0f, 0.0f, 0.0f);
+
+
+  for (const char *c = text; *c != '\0'; c++)
+  {
+    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+  }
+
+  glEnable(GL_DEPTH_TEST);
+
+  glPopMatrix();
+  glMatrixMode(GL_PROJECTION);
+  glPopMatrix();
+  glMatrixMode(GL_MODELVIEW);
+}
+
 void display()
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -211,6 +245,11 @@ void display()
   glRotatef(angle, 0.0f, 1.0f, 0.0f);
   drawWindowsLogo();
   glPopMatrix();
+
+  // Add text overlay
+  char buffer[128];
+  sprintf(buffer, "Hello");
+  renderText(10, glutGet(GLUT_WINDOW_HEIGHT) - 20, buffer);
 
   glutSwapBuffers();
 }
