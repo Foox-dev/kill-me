@@ -11,6 +11,12 @@ GLfloat green[] = {0.0f, 0.87f, 0.0f};
 GLfloat blue[] = {0.0f, 0.0f, 0.87f};
 GLfloat yellow[] = {0.87f, 0.87f, 0.0f};
 
+float cameraX = 0.0f;
+float cameraY = 0.0f;
+float cameraZ = -2.0f;
+float tiltAngle = 15.0f;
+float rotationSpeed = 2.0f;
+
 void drawBox(float size, float gap, float depth, GLfloat color[])
 {
   glColor3fv(color);
@@ -96,14 +102,55 @@ void drawWindowsLogo()
   glPopMatrix();
 }
 
+void keyboard(unsigned char key, int x, int y)
+{
+  float moveSpeed = 0.1f;
+  switch (key)
+  {
+  case 'w':
+    cameraY += moveSpeed;
+    break;
+  case 's':
+    cameraY -= moveSpeed;
+    break;
+  case 'a':
+    cameraX -= moveSpeed;
+    break;
+  case 'd':
+    cameraX += moveSpeed;
+    break;
+  }
+  glutPostRedisplay();
+}
+
+void specialKeys(int key, int x, int y)
+{
+  switch (key)
+  {
+  case GLUT_KEY_LEFT:
+    rotationSpeed = fmax(0.5f, rotationSpeed - 0.5f);
+    break;
+  case GLUT_KEY_RIGHT:
+    rotationSpeed = fmin(10.0f, rotationSpeed + 0.5f);
+    break;
+  case GLUT_KEY_UP:
+    tiltAngle = fmin(89.0f, tiltAngle + 5.0f);
+    break;
+  case GLUT_KEY_DOWN:
+    tiltAngle = fmax(-89.0f, tiltAngle - 5.0f);
+    break;
+  }
+  glutPostRedisplay();
+}
+
 void display()
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glLoadIdentity();
 
-  // Move the logo back and adjust view angle
-  glTranslatef(0.0f, 0.0f, -2.0f);
-  glRotatef(20.0f, 1.0f, 0.0f, 0.0f); // Tilt slightly for better 3D view
+  // Update camera position and rotation
+  glTranslatef(cameraX, cameraY, cameraZ);
+  glRotatef(tiltAngle, 1.0f, 0.0f, 0.0f);
 
   glPushMatrix();
   glRotatef(angle, 0.0f, 1.0f, 0.0f);
@@ -115,7 +162,7 @@ void display()
 
 void update(int value)
 {
-  angle += 2.0f;
+  angle += rotationSpeed;
   if (angle > 360.0f)
   {
     angle -= 360.0f;
@@ -149,7 +196,7 @@ int main(int argc, char **argv)
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH); // Enable depth buffer
   glutInitWindowSize(800, 800);
-  glutCreateWindow("Windows 95 Logo");
+  glutCreateWindow("Spinning Windows 95 Logo");
 
   glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
   glEnable(GL_DEPTH_TEST); // Enable depth testing
@@ -162,6 +209,8 @@ int main(int argc, char **argv)
 
   glutDisplayFunc(display);
   glutTimerFunc(0, update, 0);
+  glutKeyboardFunc(keyboard);
+  glutSpecialFunc(specialKeys);
 
   glutMainLoop();
   return 0;
