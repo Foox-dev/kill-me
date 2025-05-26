@@ -1,15 +1,21 @@
 #include "constants.h"
 
-// Function declarations
-SubmarineState initSubmarine(void);
-void updateSubmarineState(SubmarineState *sub, float deltaTime);
-void initAudio(void);
-void renderSubmarine(SubmarineState sub, float deltaTime, Button* buttons, float hold_depth);
-
 // Global variables
 Sound reactorHum;
 Sound sonarPing;
 bool audioInitialized = false;
+bool isPaused = false; // Add this line
+
+void syncButtonStates(Button buttons[], SubmarineState submarine)
+{
+  // Sync button states with actual submarine state to prevent conflicts
+  buttons[0].pressed = submarine.ballast_tanks_filled;
+  buttons[1].pressed = submarine.lights_active;
+  buttons[2].pressed = submarine.sonar_active;
+  buttons[3].pressed = submarine.emergency_surface;
+  buttons[4].pressed = submarine.autopilot_active;
+  buttons[5].pressed = submarine.cooling_active;
+}
 
 int main(void)
 {
@@ -20,85 +26,24 @@ int main(void)
 
   SubmarineState sub = initSubmarine();
 
+  // Updated main control buttons (bottom right) - now includes autopilot
   Button buttons[] = {
-      {(Rectangle){20, 20, 150, 35}, "Reactor Power", false},
-      {(Rectangle){20, 60, 150, 35}, "Ballast Control", false},
-      {(Rectangle){20, 100, 150, 35}, "Sonar", false},
-      {(Rectangle){20, 140, 150, 35}, "Emergency Blow", false},
-      {(Rectangle){20, 180, 150, 35}, "Lights", false},
-      {(Rectangle){20, 220, 150, 35}, "O2 System", true},
-      {(Rectangle){20, 260, 150, 35}, "Cooling System", false},
-      {(Rectangle){20, 300, 150, 35}, "Autopilot", false},
-      {(Rectangle){20, 340, 150, 35}, "Emergency Surface", false},
+      {(Rectangle){SCREEN_WIDTH - 240, SCREEN_HEIGHT - 160, 100, 30}, "Ballast", false},
+      {(Rectangle){SCREEN_WIDTH - 135, SCREEN_HEIGHT - 160, 100, 30}, "Lights", false},
+      {(Rectangle){SCREEN_WIDTH - 240, SCREEN_HEIGHT - 125, 100, 30}, "Sonar", false},
+      {(Rectangle){SCREEN_WIDTH - 135, SCREEN_HEIGHT - 125, 100, 30}, "Emergency", false},
+      {(Rectangle){SCREEN_WIDTH - 240, SCREEN_HEIGHT - 90, 100, 30}, "Autopilot", false},
+      {(Rectangle){SCREEN_WIDTH - 135, SCREEN_HEIGHT - 90, 100, 30}, "Cooling", false},
   };
-
-  static float hold_depth = -1;
 
   while (!WindowShouldClose())
   {
     float deltaTime = GetFrameTime();
 
-    // Input handling
-    Vector2 mousePos = GetMousePosition();
-    bool mousePressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
-
-    for (int i = 0; i < 9; i++)
-    {
-      if (CheckCollisionPointRec(mousePos, buttons[i].bounds) && mousePressed)
-      {
-        buttons[i].pressed = !buttons[i].pressed;
-
-        switch (i)
-        {
-        case 0:
-          sub.reactor_active = buttons[i].pressed;
-          break;
-        case 1:
-          sub.ballast_tanks_filled = buttons[i].pressed;
-          break;
-        case 2:
-          sub.sonar_active = buttons[i].pressed;
-          break;
-        case 3: // Emergency blow
-          sub.emergency_surface = buttons[i].pressed;
-          if (buttons[i].pressed)
-          {
-            sub.ballast_level = 0;
-            sub.autopilot_active = false;
-            buttons[7].pressed = false;
-          }
-          break;
-        case 4:
-          sub.lights_active = buttons[i].pressed;
-          break;
-        case 5:
-          sub.oxygen_system_active = buttons[i].pressed;
-          break;
-        case 6:
-          sub.cooling_active = buttons[i].pressed;
-          break;
-        case 7: // Autopilot
-          sub.autopilot_active = buttons[i].pressed;
-          if (buttons[i].pressed)
-          {
-            sub.target_depth = sub.depth;
-            sub.emergency_surface = false;
-            buttons[3].pressed = false;
-          }
-          break;
-        case 8: // Emergency surface
-          sub.emergency_surface = buttons[i].pressed;
-          buttons[3].pressed = buttons[i].pressed;
-          break;
-        }
-      }
-    }
+    // NEW SUBSYSTEM INPUT HANDLING
+    handleSubSystemInput(&sub);
 
     // Enhanced keyboard controls
-    if (IsKeyPressed(KEY_H))
-    {
-      hold_depth = sub.depth;
-    }
 
     // Manual depth control
     if (!sub.autopilot_active)
@@ -133,13 +78,183 @@ int main(void)
       }
     }
 
-    updateSubmarineState(&sub, deltaTime);
+    // Handle pause with Escape key
+    if (IsKeyPressed(KEY_ESCAPE))
+    {
+      isPaused = !isPaused;
+    }
 
-    // START DRAWING
+    // Only process game input if not paused
+    if (!isPaused)
+    {
+      // Handle keyboard input
+      if (IsKeyDown(KEY_UP))
+      {
+        sub.thrust = MIN(100.0f, sub.thrust + 50.0f * deltaTime);
+      }
+      else if (IsKeyDown(KEY_DOWN))
+      {
+        sub.thrust = MAX(-100.0f, sub.thrust - 50.0f * deltaTime);
+      }
+      else
+      {
+        // Gradually reduce thrust when no input
+        if (sub.thrust > 0)
+        {
+          sub.thrust = MAX(0, sub.thrust - 25.0f * deltaTime);
+        }
+        else if (sub.thrust < 0)
+        {
+          sub.thrust = MIN(0, sub.thrust + 25.0f * deltaTime);
+        }
+      }
+
+      // Mouse input handling
+      Vector2 mousePoint = GetMousePosition();
+      bool mousePressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+
+      if (mousePressed)
+      {
+        // Main control buttons
+        for (int i = 0; i < 6; i++)
+        {
+          int x = SCREEN_WIDTH - 240 + (i % 2) * 105;
+          int y = SCREEN_HEIGHT - 160 + (i / 2) * 35;
+          Rectangle buttonRect = {x, y, 100, 30};
+
+          if (CheckCollisionPointRec(mousePoint, buttonRect))
+          {
+            // Handle each button click
+            switch (i)
+            {
+            case 0: // Ballast - now requires power for normal operation
+              // Check if ballast control system has power
+              if (sub.battery_level > 0.0f || sub.backup_power_active)
+              {
+                sub.ballast_tanks_filled = !sub.ballast_tanks_filled;
+                buttons[i].pressed = sub.ballast_tanks_filled;
+                if (sub.autopilot_active)
+                {
+                  sub.autopilot_active = false;
+                  buttons[4].pressed = false;
+                }
+              }
+              // If no power, ballast button does nothing (except emergency blow still works)
+              break;
+            case 1: // Lights
+              if (sub.battery_level > 5.0f)
+              {
+                sub.lights_active = !sub.lights_active; // CHANGED: use 'sub' not 'submarine'
+                buttons[i].pressed = sub.lights_active;
+              }
+              break;
+            case 2: // Sonar
+              if (sub.battery_level > 5.0f)
+              {
+                sub.sonar_active = !sub.sonar_active; // CHANGED: use 'sub' not 'submarine'
+                buttons[i].pressed = sub.sonar_active;
+              }
+              break;
+            case 3:                                           // Emergency
+              sub.emergency_surface = !sub.emergency_surface; // CHANGED: use 'sub' not 'submarine'
+              buttons[i].pressed = sub.emergency_surface;
+              break;
+            case 4: // Autopilot
+            {
+              bool nav_operational = sub.navigation_computer_active &&
+                                     sub.gyroscope_active &&
+                                     sub.depth_control_active &&
+                                     sub.reactor_active;
+              if (nav_operational)
+              {
+                sub.autopilot_active = !sub.autopilot_active; // CHANGED: use 'sub' not 'submarine'
+                buttons[i].pressed = sub.autopilot_active;
+                if (sub.autopilot_active)
+                {
+                  sub.target_depth = sub.depth;
+                  buttons[0].pressed = sub.ballast_tanks_filled;
+                }
+              }
+            }
+            break;
+            case 5: // Cooling
+            {
+              bool cooling_available = sub.reactor_coolant_pumps_active ||
+                                       sub.emergency_cooling_active;
+              if (cooling_available)
+              {
+                sub.cooling_active = !sub.cooling_active; // CHANGED: use 'sub' not 'submarine'
+                buttons[i].pressed = sub.cooling_active;
+              }
+            }
+            break;
+            }
+            break; // Exit loop after handling click
+          }
+        }
+      }
+
+      // Update submarine only if not paused
+      updateSubmarineState(&sub, deltaTime); // CHANGED: use correct function name
+
+      // Sync button states to prevent flickering
+      syncButtonStates(buttons, sub);
+    }
+
+    // Audio management - Reactor hum based on TEMPERATURE, not just active state
+    if (sub.reactor_temp > 50.0f) // Hum when hot, even if shut down
+    {
+      if (!IsSoundPlaying(reactorHum))
+      {
+        PlaySound(reactorHum);
+      }
+
+      // Adjust volume based on temperature
+      float volume = MIN(1.0f, (sub.reactor_temp - 50.0f) / 300.0f);
+      SetSoundVolume(reactorHum, volume * 0.6f);
+    }
+    else
+    {
+      if (IsSoundPlaying(reactorHum))
+      {
+        StopSound(reactorHum);
+      }
+    }
+
+    // Sonar ping
+    if (sub.sonar_active && sub.battery_level > 5.0f)
+    {
+      sub.sonar_ping_timer -= deltaTime;
+      if (sub.sonar_ping_timer <= 0)
+      {
+        PlaySound(sonarPing);
+        sub.sonar_ping_timer = SONAR_PING_INTERVAL;
+      }
+    }
+
+    // Render everything (including pause overlay)
     BeginDrawing();
     ClearBackground(BLACK);
 
-    renderSubmarine(sub, deltaTime, buttons, hold_depth);
+    renderSubmarine(sub, deltaTime, buttons);
+
+    // Draw pause overlay if paused
+    if (isPaused)
+    {
+      // Semi-transparent overlay
+      DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.5f));
+
+      // Pause menu
+      DrawRectangle(SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 100, 400, 200, Fade(BLACK, 0.9f));
+      DrawRectangleLines(SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 100, 400, 200, WHITE);
+
+      DrawText("GAME PAUSED", SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 80, 24, WHITE);
+      DrawText("Press ESCAPE to resume", SCREEN_WIDTH / 2 - 120, SCREEN_HEIGHT / 2 - 40, 16, LIGHTGRAY);
+      DrawText("Press UP/DOWN to control dive", SCREEN_WIDTH / 2 - 140, SCREEN_HEIGHT / 2 - 10, 14, LIGHTGRAY);
+      DrawText("Click panels to control systems", SCREEN_WIDTH / 2 - 140, SCREEN_HEIGHT / 2 + 10, 14, LIGHTGRAY);
+      DrawText("Press H to set hold depth", SCREEN_WIDTH / 2 - 120, SCREEN_HEIGHT / 2 + 30, 14, LIGHTGRAY);
+      DrawText("Main controls at bottom right", SCREEN_WIDTH / 2 - 130, SCREEN_HEIGHT / 2 + 50, 14, LIGHTGRAY);
+    }
 
     EndDrawing();
   }
